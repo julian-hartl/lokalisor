@@ -8,7 +8,6 @@ class Application with _$Application {
     required String name,
     required String? logoPath,
     required String? description,
-    required String? version,
     required String path,
     required int id,
   }) = _Application;

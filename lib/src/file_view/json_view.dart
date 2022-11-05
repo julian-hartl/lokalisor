@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/a11y-light.dart';
-import 'package:flutter_highlight/themes/obsidian.dart';
 import 'package:flutter_lokalisor/src/notifications/error_notification.dart';
 import 'package:flutter_lokalisor/src/notifications/success_notification.dart';
 import 'package:flutter_lokalisor/src/translation_locale.dart';
@@ -13,6 +12,7 @@ import 'package:flutter_lokalisor/src/utils.dart';
 
 import '../di/get_it.dart';
 import '../io/tree_io_service.dart';
+import '../locale/supported_locales.dart';
 
 class JsonView extends StatefulWidget {
   const JsonView({
@@ -46,7 +46,7 @@ class _JsonViewState extends State<JsonView> {
   late TranslationLocale locale;
 
   void _updateJson() async {
-    final value = await getIt<TreeIOService>().getTreeAsJson(locale.code);
+    final value = await getIt<TreeIOService>().getTreeAsJson(locale.id);
     setState(() => json = value);
   }
 

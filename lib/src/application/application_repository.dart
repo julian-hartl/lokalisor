@@ -1,21 +1,69 @@
 import 'package:flutter_lokalisor/src/application/application.dart';
-import 'package:flutter_lokalisor/src/db/collections/application.dart';
+import 'package:flutter_lokalisor/src/db/drift.dart';
 import 'package:injectable/injectable.dart';
-import 'package:isar/isar.dart';
+
+extension _ApplicationMapper on ApplicationTableData {
+  Application toApplication() => Application(
+        id: id,
+        name: name,
+        description: description,
+        logoPath: logoPath,
+        path: path,
+      );
+}
 
 @lazySingleton
 class ApplicationRepository {
-  final Isar _isar;
+  final DriftDb _db;
 
-  const ApplicationRepository(this._isar);
+  const ApplicationRepository(this._db);
+
+  $ApplicationTableTable get applicationTable => _db.applicationTable;
 
   /// Returns all applications.
   Future<List<Application>> getApplications() async {
-    final apps = await _isar.applicationCollections.where().findAll();
+    final apps = await _db.select(applicationTable).get();
     return apps
         .map(
           (app) => app.toApplication(),
         )
         .toList();
+  }
+
+  /// Returns the application with the given [id].
+  Future<Application?> getApplication(int id) async {
+    final query = _db.select(applicationTable)
+      ..where((tbl) => tbl.id.equals(id));
+    final app = await query.getSingleOrNull();
+    if (app == null) {
+      return null;
+    }
+    return app.toApplication();
+  }
+
+  /// Adds the given [application] to the database.
+  Future<Application> addApplication(
+      ApplicationTableCompanion application) async {
+    final id = await _db.into(applicationTable).insert(application);
+    return (await getApplication(id))!;
+  }
+
+  /// Updates the given [application] in the database.
+  Future<void> updateApplication(Application application) async {
+    final app = ApplicationTableData(
+      id: application.id,
+      name: application.name,
+      path: application.path,
+      description: application.description,
+      logoPath: application.logoPath,
+    );
+    await _db.update(applicationTable).replace(app);
+  }
+
+  /// Deletes the application with the given [id].
+  Future<void> deleteApplication(int id) async {
+    final query = _db.delete(applicationTable)
+      ..where((tbl) => tbl.id.equals(id));
+    await query.go();
   }
 }

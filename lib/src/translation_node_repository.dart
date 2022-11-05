@@ -1,135 +1,141 @@
+import 'package:drift/drift.dart';
+import 'package:flutter_lokalisor/src/db/drift.dart';
+import 'package:flutter_lokalisor/src/logger/logger.dart';
 import 'package:injectable/injectable.dart';
-import 'package:isar/isar.dart';
 
-import 'db/collections/translation.dart';
 import 'translation_tree/translation_node.dart';
 
+extension on TranslationNodeTableData {
+  TranslationNode toTranslationNode() {
+    return TranslationNode(
+      id: id,
+      applicationId: applicationId,
+      parent: parent,
+      translationKey: translationKey ?? "",
+    );
+  }
+}
+
 @lazySingleton
-class TranslationNodeRepository {
-  TranslationNodeRepository(this._isar);
+class TranslationNodeRepository with LoggerProvider {
+  TranslationNodeRepository(this._db);
 
-  final Isar _isar;
+  final DriftDb _db;
 
-  TranslationNode? getNode(String nodeId) {
-    final result = _isar
-        .collection<TranslationNodeCollection>()
-        .getSync(int.parse(nodeId));
+  $TranslationNodeTableTable get translationNodeTable =>
+      _db.translationNodeTable;
 
-    return result?.toNode();
+  $TranslationValueTableTable get translationValueTable =>
+      _db.translationValueTable;
+
+  $LocaleTableTable get localeTable => _db.localeTable;
+
+  Future<TranslationNode?> getNode(int nodeId) async {
+    final result = await getNodes(
+      ids: [nodeId],
+    );
+    if (result.isEmpty) return null;
+    return result.first;
   }
 
-  Future<List<TranslationNode>> getAllNodes() async {
-    final result = await _isar
-        .collection<TranslationNodeCollection>()
-        .filter()
-        .translationKeyIsNotEmpty()
-        .findAll();
-    return result
+  Future<List<TranslationNode>> getChildren(int parentId) async {
+    return await getNodes(parent: parentId);
+  }
+
+  Stream<List<TranslationNode>> watchChildren(int parentId) {
+    final query = translationNodeTable.select()
+      ..where((tbl) => tbl.parent.equals(parentId));
+    return query.watch().map((nodes) => nodes
         .map(
-          (value) => value.toNode(),
+          (node) => node.toTranslationNode(),
+        )
+        .toList());
+  }
+
+  Future<List<TranslationNode>> getNodes({
+    String? translationKey,
+    int? parent,
+    List<int>? ids,
+    int? applicationId,
+  }) async {
+    final nodeQuery = _db.select(translationNodeTable)
+      ..where(
+        (tbl) =>
+            ids == null ? const CustomExpression("TRUE") : tbl.id.isIn(ids),
+      );
+    if (translationKey != null) {
+      nodeQuery.where(
+        (tbl) => tbl.translationKey.equals(translationKey),
+      );
+    }
+    if (parent != null) {
+      nodeQuery.where(
+        (tbl) => tbl.parent.equals(parent),
+      );
+    }
+
+    final nodeResult = await nodeQuery.get();
+    return nodeResult
+        .map(
+          (node) => node.toTranslationNode(),
         )
         .toList();
   }
 
-  TranslationNode getNodeOrThrow(String nodeId) {
-    final node = getNode(nodeId);
+  Future<List<TranslationNode>> getAllNodes() async {
+    return getNodes();
+  }
+
+  Future<TranslationNode> getNodeOrThrow(int nodeId) async {
+    final node = await getNode(nodeId);
     if (node == null) {
       throw StateError("Node $nodeId not found");
     }
     return node;
   }
 
-  Future<TranslationNode> getNodeAsyncOrThrow(String nodeId) async {
-    final node = (await _isar.collection<TranslationNodeCollection>().get(
-              int.parse(
-                nodeId,
-              ),
-            ))
-        ?.toNode();
-    if (node == null) {
-      throw StateError("Node $nodeId not found");
-    }
-    return node;
+  Future<int?> getParentId(int nodeId) async {
+    return (await getNode(nodeId))?.parent;
   }
 
-  String? getParentId(String nodeId) {
-    return getNode(nodeId)?.parent;
-  }
+  Future<TranslationNode> updateNode(TranslationNode node) async {
+    final updatedNode = TranslationNodeTableData(
+      id: node.id,
+      applicationId: node.applicationId,
+      parent: node.parent,
+      translationKey: node.translationKey,
+    );
+    final nodeUpdateQuery = translationNodeTable.update();
 
-  Future<void> updateNode(TranslationNode node) async {
-    await _isar.writeTxn(() async {
-      await _isar.collection<TranslationNodeCollection>().put(
-            TranslationNodeCollection.fromNode(node),
-          );
-    });
+    await nodeUpdateQuery.replace(updatedNode);
+    return updatedNode.toTranslationNode();
   }
 
   Future<TranslationNode?> addNode(
-    String? parentId,
-    String translationKey,
+    int? parentId,
+    String? translationKey,
+    int applicationId,
   ) async {
     // Update db
-    final collection = _isar.collection<TranslationNodeCollection>();
-    final parent = parentId != null
-        ? await collection
-            .filter()
-            .idEqualTo(int.parse(parentId))
-            .build()
-            .findFirst()
-        : null;
-    final newCollection = TranslationNodeCollection(
-      parent: parentId,
-      translationKey: translationKey,
+    final nodeToInsert = TranslationNodeTableCompanion.insert(
+      applicationId: applicationId,
+      translationKey: Value(translationKey),
+      parent: Value(parentId),
     );
+    final nodeUpdateQuery = translationNodeTable.insert();
 
-    TranslationNode? result;
-
-    await _isar.writeTxn(() async {
-      await collection.put(newCollection);
-      if (parent != null) {
-        parent.children = [...parent.children, newCollection.id.toString()];
-        await collection.put(parent);
-      }
-      result = newCollection.toNode();
-    });
-    return result;
+    final node = await nodeUpdateQuery.insertReturning(nodeToInsert);
+    final translationNode = node.toTranslationNode();
+    log("Added node $translationNode");
+    return translationNode;
   }
 
-  Future<void> _deleteChildrenWithoutTransaction(String nodeId) async {
-    final node = await getNodeAsyncOrThrow(nodeId);
-    final collection = _isar.collection<TranslationNodeCollection>();
-    for (final childId in node.children) {
-      await _deleteChildrenWithoutTransaction(childId);
-    }
-    await collection.delete(int.parse(nodeId));
-  }
-
-  Future<void> deleteNode(String nodeId) async {
-    final collection = _isar.collection<TranslationNodeCollection>();
-    final node = getNode(nodeId);
-    if (node == null) {
-      return;
-    }
-    final parent = node.parent != null
-        ? await collection
-            .filter()
-            .idEqualTo(int.parse(node.parent!))
-            .build()
-            .findFirst()
-        : null;
-    await _isar.writeTxn(() async {
-      if (parent != null) {
-        parent.children = parent.children
-            .where((element) => element != nodeId)
-            .toList(growable: false);
-        await collection.put(parent);
-      }
-      await _deleteChildrenWithoutTransaction(nodeId);
-      await collection.delete(
-        int.parse(
-          node.id,
-        ),
-      );
+  Future<void> deleteNode(int nodeId) async {
+    log("Deleting node $nodeId...");
+    await _db.transaction(() async {
+      final amount = await translationNodeTable
+          .deleteWhere((tbl) => tbl.id.equals(nodeId));
+      log("Successfully deleted $amount nodes");
     });
   }
 }

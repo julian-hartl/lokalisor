@@ -1,24 +1,30 @@
 import 'dart:convert';
 
 import 'package:collection/collection.dart';
-import 'package:flutter_lokalisor/src/db/collections/translation.dart';
+import 'package:flutter_lokalisor/src/logger/logger.dart';
 import 'package:flutter_lokalisor/src/translation_locale.dart';
 import 'package:flutter_lokalisor/src/translation_tree/translation_node.dart';
-import 'package:flutter_lokalisor/src/translation_tree/tree_utils.dart';
+import 'package:flutter_lokalisor/src/translation_value/translation_value_repository.dart';
 import 'package:injectable/injectable.dart';
-import 'package:isar/isar.dart';
 import 'package:universal_io/io.dart';
 
+import '../db/drift.dart';
+import '../locale/locale_repository.dart';
+import '../locale/supported_locales.dart';
 import '../translation_node_repository.dart';
 
 @lazySingleton
-class TreeIOService {
+class TreeIOService with LoggerProvider {
   final TranslationNodeRepository _nodeRepository;
-  final Isar _isar;
+  final TranslationValueRepository _valueRepository;
+  final LocaleRepository _localeRepository;
+  final DriftDb _db;
 
   TreeIOService(
     this._nodeRepository,
-    this._isar,
+    this._localeRepository,
+    this._valueRepository,
+    this._db,
   );
 
   /// Returns the translation file.
@@ -31,33 +37,37 @@ class TreeIOService {
     return file;
   }
 
-  dynamic _nodeToJson(TranslationNode node, {required String locale}) {
+  Future<dynamic> _nodeToJson(TranslationNode node,
+      {required int localeId}) async {
     dynamic value;
-    if (node.children.isNotEmpty) {
+    final List<TranslationNode> children =
+        await _nodeRepository.getChildren(node.id);
+    if (children.isNotEmpty) {
       value = {};
-      for (final child in node.children) {
-        final node = _nodeRepository.getNodeOrThrow(child);
-        value[node.data.translationKey] = _nodeToJson(node, locale: locale);
+      for (final child in children) {
+        final node = await _nodeRepository.getNodeOrThrow(child.id);
+        value[node.translationKey] =
+            await _nodeToJson(node, localeId: localeId);
       }
     } else {
-      value = node.data.translationValues
-              .firstWhereOrNull(
-                (element) => element.locale == locale,
-              )
-              ?.value ??
-          "";
+      final translationValues = await _valueRepository.getTranslationValues(
+        nodeId: node.id,
+        localeId: localeId,
+      );
+      value = translationValues.firstOrNull?.value ?? "";
     }
 
     return value;
   }
 
-  Future<Map<String, dynamic>> getTreeAsJson(String locale) async {
+  Future<Map<String, dynamic>> getTreeAsJson(int localeId) async {
     final nodes = await _nodeRepository.getAllNodes();
+    final locale = (await _localeRepository.getLocale(localeId))!;
     final Map<String, dynamic> json = {};
     for (final node in nodes.where((element) => element.parent == null)) {
-      json[node.data.translationKey] = _nodeToJson(
+      json[node.translationKey] = await _nodeToJson(
         node,
-        locale: locale,
+        localeId: locale.id,
       );
     }
     return json;
@@ -68,72 +78,43 @@ class TreeIOService {
   }) async {
     final localeCode = locale.code;
     final file = await _getTranslationsFile(localeCode);
-    final json = await getTreeAsJson(localeCode);
+    final json = await getTreeAsJson(locale.id);
     await file.writeAsString(jsonEncode(json));
     print("Wrote output to ${file.path}");
   }
 
-  Future<List<TranslationNodeCollection>> _parseJson(
+  Future<void> _parseJson(
     Map<String, dynamic> json,
-    String? parent,
+    int? parent,
     TranslationLocale locale,
+    int applicationId,
   ) async {
-    final nodes = <TranslationNodeCollection>[];
+    log("Parsing json $json...");
     for (final key in json.keys) {
       final value = json[key];
 
-      final node = TranslationNodeCollection(
-        translationKey: key,
-        parent: parent,
-      );
-      final absoluteKey = await getAbsoluteTranslationKey(node.toNode());
-      final matchingNodes = await _isar.translationNodeCollections
-          .filter()
-          .translationKeyEqualTo(key)
-          .parentEqualTo(parent)
-          .findAll();
-       TranslationNodeCollection? matchingNode;
-      for (final node in matchingNodes) {
-        if (await getAbsoluteTranslationKey(node.toNode()) == absoluteKey) {
-          matchingNode = node;
-          break;
-        }
+      final node = (await _nodeRepository.addNode(
+        parent,
+        key,
+        applicationId,
+      ))!;
+
+      if (value is String) {
+        await _valueRepository.updateTranslation(
+          localeId: locale.id,
+          value: value,
+          translationNodeId: node.id,
+        );
       }
-      if (matchingNode != null) {
-        node.id = matchingNode.id;
-      }
-
-      final List<EmbeddedTranslationValue> values = value is String
-          ? [
-              EmbeddedTranslationValue(
-                locale: locale.code,
-                value: value,
-              ),
-              ...(matchingNode?.values
-                      .where((element) => element.locale != locale.code) ??
-                  []),
-            ]
-          : [];
-
-      node.values = values;
-
-      final createdNodeId = await _isar.translationNodeCollections.put(node);
-      node.id = createdNodeId;
       if (value is Map<String, dynamic>) {
-        final children = await _parseJson(value, node.id.toString(), locale);
-        if (children.toSet().length != children.length) {
-          throw Exception("Duplicate translation keys found");
-        }
-        node.children = children.map((e) => e.id.toString()).toList();
-        await _isar.translationNodeCollections.put(node);
+        await _parseJson(value, node.id, locale, applicationId);
       }
-      nodes.add(node);
     }
-    return nodes;
   }
 
-  Future<String?> import(File file) async {
+  Future<String?> import(File file, {required int applicationId}) async {
     try {
+      log("Importing file ${file.path}");
       final json = jsonDecode(await file.readAsString());
       final fileName = file.uri.pathSegments.last.split(".").first;
       final locale = supportedLocales
@@ -142,28 +123,15 @@ class TreeIOService {
       if (locale == null) {
         return "Locale $fileName is not supported";
       }
-      await _isar.writeTxn(() async {
-        final nodes = await _parseJson(json, null, locale);
-        final nodeIds = nodes.map((e) => e.id);
-        if (nodeIds.toSet().length != nodeIds.length) {
-          throw Exception("Duplicate translation keys found");
-        }
-        for (final node in nodes) {
-          if (await _isar.translationNodeCollections
-                  .filter()
-                  .translationKeyEqualTo(node.translationKey)
-                  .parentIsNull()
-                  .count() >
-              1) {
-            throw Exception("Duplicate translation keys found");
-          }
-        }
+      await _db.transaction(() async {
+        await _parseJson(json, null, locale, applicationId);
       });
+
       return null;
     } on FormatException catch (e) {
       return e.message;
-    } catch (e) {
-      print("Error importing file: $e");
+    } catch (e, str) {
+      log("Error importing file ${file.path}", e, str);
       return "Error importing file: $e.";
     }
   }

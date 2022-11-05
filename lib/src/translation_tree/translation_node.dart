@@ -6,18 +6,13 @@ part 'translation_node.freezed.dart';
 @freezed
 class TranslationNode with _$TranslationNode {
   const factory TranslationNode({
-    /// The children of this [TranslationNode].
-
-    required List<String> children,
-
-    /// The data of this [TranslationNode].
-
-    required TranslationNodeData data,
+    required int applicationId,
+    required String translationKey,
 
     /// The parent of this [TranslationNode].
-    required String? parent,
+    required int? parent,
 
     /// The path of this [TranslationNode].
-    required String id,
+    required int id,
   }) = _TranslationNode;
 }
