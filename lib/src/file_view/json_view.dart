@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/a11y-light.dart';
-import 'package:flutter_highlight/themes/obsidian.dart';
+import 'package:flutter_lokalisor/src/application/application_cubit.dart';
+import 'package:flutter_lokalisor/src/logger/logger.dart';
 import 'package:flutter_lokalisor/src/notifications/error_notification.dart';
 import 'package:flutter_lokalisor/src/notifications/success_notification.dart';
 import 'package:flutter_lokalisor/src/translation_locale.dart';
@@ -13,6 +15,7 @@ import 'package:flutter_lokalisor/src/utils.dart';
 
 import '../di/get_it.dart';
 import '../io/tree_io_service.dart';
+import '../locale/supported_locales.dart';
 
 class JsonView extends StatefulWidget {
   const JsonView({
@@ -26,7 +29,7 @@ class JsonView extends StatefulWidget {
   State<JsonView> createState() => _JsonViewState();
 }
 
-class _JsonViewState extends State<JsonView> {
+class _JsonViewState extends State<JsonView> with LoggerProvider {
   Map<String, dynamic> json = {};
 
   void _copyToClipboard() async {
@@ -46,7 +49,19 @@ class _JsonViewState extends State<JsonView> {
   late TranslationLocale locale;
 
   void _updateJson() async {
-    final value = await getIt<TreeIOService>().getTreeAsJson(locale.code);
+    final applicationId = context
+        .read<ApplicationCubit>()
+        .state
+        .valueOrNull
+        ?.currentApplicationId;
+    if (applicationId == null) {
+      log("Cannot update json: No application selected.");
+      return;
+    }
+    final value = await getIt<TreeIOService>().getTreeAsJson(
+      localeId: locale.id,
+      applicationId: applicationId,
+    );
     setState(() => json = value);
   }
 
@@ -147,7 +162,18 @@ class _SelectLocaleDialogState extends State<_SelectLocaleDialog> {
   void initState() {
     super.initState();
     locale = widget.initialLocale;
+    locales = availableLocales
+        .where((element) => context
+            .read<ApplicationCubit>()
+            .state
+            .valueOrThrow
+            .currentApplication!
+            .supportedLocales
+            .contains(element.id))
+        .toList();
   }
+
+  late final List<TranslationLocale> locales;
 
   @override
   Widget build(BuildContext context) {
@@ -175,13 +201,13 @@ class _SelectLocaleDialogState extends State<_SelectLocaleDialog> {
                 itemExtent: 30,
                 onSelectedItemChanged: (value) {
                   setState(() {
-                    locale = supportedLocales[value];
+                    locale = locales[value];
                   });
                 },
                 scrollController: FixedExtentScrollController(
-                  initialItem: supportedLocales.indexOf(widget.initialLocale),
+                  initialItem: availableLocales.indexOf(widget.initialLocale),
                 ),
-                children: supportedLocales
+                children: locales
                     .map((e) => Text(
                           "${e.flag} ${e.name}",
                         ))

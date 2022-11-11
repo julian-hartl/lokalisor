@@ -1,11 +1,12 @@
 part of 'application_cubit.dart';
 
 @freezed
-class ApplicationState with _$ApplicationState {
-  const factory ApplicationState.loading() = ApplicationLoading;
+class ApplicationStateValue with _$ApplicationStateValue {
+  const ApplicationStateValue._();
+  const factory ApplicationStateValue({
+    required List<Application> applications,
+    required int? currentApplicationId,
+  }) = _ApplicationStateValue;
 
-  const factory ApplicationState.loaded(List<Application> applications) =
-      ApplicationLoaded;
-
-  const factory ApplicationState.error(String message) = ApplicationError;
+  Application? get currentApplication => applications.firstWhereOrNull((element) => element.id == currentApplicationId);
 }

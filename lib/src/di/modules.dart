@@ -1,10 +1,12 @@
+import 'package:flutter_lokalisor/src/db/drift.dart';
 import 'package:injectable/injectable.dart';
-import 'package:isar/isar.dart';
-
-import '../db/isar.dart';
+import 'package:logger/logger.dart';
 
 @module
 abstract class DIModules {
-  @preResolve
-  Future<Isar> get isar => connectDb();
+  @lazySingleton
+  final DriftDb db = DriftDb();
+
+  @lazySingleton
+  Logger get logger => Logger();
 }

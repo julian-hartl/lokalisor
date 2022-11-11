@@ -5,28 +5,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_lokalisor/src/application/application_cubit.dart';
+import 'package:flutter_lokalisor/src/changes_detector/changes_detector.dart';
 import 'package:flutter_lokalisor/src/changes_detector/changes_detector_cubit.dart';
 import 'package:flutter_lokalisor/src/di/get_it.dart';
-import 'package:flutter_lokalisor/src/file_view/json_view.dart';
 import 'package:flutter_lokalisor/src/io/tree_io_service.dart';
 import 'package:flutter_lokalisor/src/notifications/error_notification.dart';
 import 'package:flutter_lokalisor/src/notifications/success_notification.dart';
-import 'package:flutter_lokalisor/src/translation_locale.dart';
+import 'package:flutter_lokalisor/src/settings/settings_page.dart';
 import 'package:flutter_lokalisor/src/translation_tree/translation_tree_cubit.dart';
-import 'package:flutter_lokalisor/src/translation_tree/tree_view.dart';
-import 'package:flutter_lokalisor/src/translation_value_cubit.dart';
+import 'package:flutter_lokalisor/src/translation_tree/translations_page.dart';
+import 'package:flutter_lokalisor/src/widgets/display_error.dart';
+import 'package:flutter_lokalisor/src/widgets/display_loading.dart';
 import 'package:flutter_lokalisor/src/widgets/loading_dialog.dart';
 import 'package:gap/gap.dart';
-import 'package:isar/isar.dart';
 import 'package:overlay_support/overlay_support.dart';
 import 'package:sidebarx/sidebarx.dart';
 import 'package:universal_io/io.dart';
 
+import 'src/page_view_panel.dart';
+import 'src/translation_value/translation_value_cubit.dart';
+
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   await configureDependencies();
-  await getIt<Isar>().writeTxn(() async {
-    await getIt<Isar>().clear();
-  });
   runApp(const FlutterLokalisor());
 }
 
@@ -50,11 +51,11 @@ class FlutterLokalisor extends StatelessWidget {
           create: (context) => getIt<ApplicationCubit>(),
         ),
       ],
-      child: const OverlaySupport.global(
+      child: OverlaySupport.global(
         child: CupertinoApp(
           debugShowCheckedModeBanner: false,
           title: 'Flutter Lokalisor',
-          theme: CupertinoThemeData(
+          theme: const CupertinoThemeData(
             scaffoldBackgroundColor: Color(0xFFEFEFF4),
             brightness: Brightness.light,
             barBackgroundColor: Color(0xFFEFEFF4),
@@ -71,7 +72,35 @@ class FlutterLokalisor extends StatelessWidget {
             ),
             primaryColor: CupertinoColors.activeOrange,
           ),
-          home: Home(),
+          home: BlocConsumer<ApplicationCubit, ApplicationState>(
+            listener: (context, state) {
+              state.whenOrNull(
+                loaded: (value) {
+                  if (value.currentApplicationId != null) {
+                    context
+                        .read<TranslationTreeCubit>()
+                        .load(value.currentApplicationId!);
+                  }
+                },
+              );
+            },
+            builder: (context, state) {
+              return state.when(
+                loading: () => const CupertinoPageScaffold(
+                  child: DisplayLoading(),
+                ),
+                loaded: (_) => const Home(),
+                error: (message) => CupertinoPageScaffold(
+                  child: DisplayError(
+                    message: message,
+                    onTryAgain: () {
+                      context.read<ApplicationCubit>().loadApplications();
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -86,154 +115,72 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
-  final _sideBarController = SidebarXController(selectedIndex: 0);
+  final _sideBarController = SidebarXController(
+    selectedIndex: 0,
+    extended: true,
+  );
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Material(
-          color: CupertinoTheme.of(context).scaffoldBackgroundColor,
-          child: SidebarX(
-            extendedTheme: const SidebarXTheme(
-              width: 200,
-            ),
-            theme: SidebarXTheme(
-              selectedIconTheme: IconThemeData(
-                color: CupertinoTheme.of(context).primaryColor,
-              ),
-              selectedItemPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
-              ),
-              selectedTextStyle: TextStyle(
-                color: CupertinoTheme.of(context).primaryColor,
-              ),
-              decoration: BoxDecoration(
-                  color: CupertinoTheme.of(context).scaffoldBackgroundColor),
-            ),
-            showToggleButton: true,
-            footerItems: [
-              const SidebarXItem(label: 'About', icon: CupertinoIcons.info),
-              const SidebarXItem(
-                  label: 'Settings', icon: CupertinoIcons.settings),
-              SidebarXItem(
-                label: 'Exit',
-                icon: CupertinoIcons.power,
-                onTap: () => exit(0),
-              ),
-            ],
-            controller: _sideBarController,
-            items: const [
-              SidebarXItem(icon: CupertinoIcons.add_circled, label: 'Add'),
-            ],
-          ),
-        ),
+        PageViewPanel(sideBarController: _sideBarController),
         Expanded(
-          child: CupertinoPageScaffold(
-            navigationBar: CupertinoNavigationBar(
-              // leading: CupertinoButton(
-              //   padding: EdgeInsets.zero,
-              //   child: const Icon(Icons.menu),
-              //   onPressed: () {},
-              // ),
-              middle: const Text('Flutter Lokalisor'),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CupertinoButton(
-                    onPressed: () async {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const JsonView(
-                            locale: TranslationLocale.german,
-                          ),
-                        ),
-                      );
-                    },
-                    child: const Icon(Icons.video_file_outlined),
-                  ),
-                ],
+          child: Column(
+            children: [
+              const ChangesDetector(),
+              Expanded(
+                child: HomePageView(
+                  controller: _sideBarController,
+                ),
               ),
-            ),
-            child: Stack(
-              children: [
-                Column(
-                  children: const [
-                    ChangesDetector(),
-                    Expanded(
-                      child: TranslationTreeView(),
-                    ),
-                  ],
-                ),
-                const Align(
-                  alignment: Alignment.bottomCenter,
-                  child: AddTranslationButton(),
-                ),
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: CupertinoButton(
-                    child: const Text("Import/Export"),
-                    onPressed: () async {
-                      await showCupertinoModalPopup(
-                        context: context,
-                        builder: (context) => CupertinoAlertDialog(
-                          title: const Text("Action"),
-                          content: const Text(
-                              "Do you want to import or export translations?"),
-                          actions: [
-                            CupertinoDialogAction(
-                              onPressed: () async {
-                                await showCupertinoModalPopup(
-                                  context: context,
-                                  builder: (context) =>
-                                      const FileImportDialog(),
-                                );
-                                context.read<TranslationTreeCubit>().load();
-                                Navigator.pop(context);
-                              },
-                              child: const Text(
-                                "Import",
-                              ),
-                            ),
-                            CupertinoDialogAction(
-                              onPressed: () async {
-                                try {
-                                  LoadingDialog.show(context);
-                                  for (final locale in supportedLocales) {
-                                    await getIt<TreeIOService>()
-                                        .outputTreeAsJson(
-                                      locale: locale,
-                                    );
-                                  }
-                                  showSuccessNotification(
-                                      "Successfully exported ${supportedLocales.length} localizations.");
-                                } catch (e) {
-                                  print(e);
-                                  showErrorNotification(
-                                      "Localization export failed.");
-                                } finally {
-                                  Navigator.pop(context);
-                                  Navigator.pop(context);
-                                }
-                              },
-                              child: const Text(
-                                "Export",
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                )
-              ],
-            ),
+            ],
           ),
         ),
       ],
     );
+  }
+}
+
+class HomePageView extends StatefulWidget {
+  const HomePageView({
+    Key? key,
+    required this.controller,
+  }) : super(key: key);
+
+  final SidebarXController controller;
+
+  @override
+  State<HomePageView> createState() => _HomePageViewState();
+}
+
+class _HomePageViewState extends State<HomePageView> {
+  int currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    currentIndex = widget.controller.selectedIndex;
+    widget.controller.addListener(() {
+      final index = widget.controller.selectedIndex;
+      if (currentIndex != index) {
+        setState(() {
+          currentIndex = index;
+        });
+      }
+    });
+  }
+
+  static final pages = [
+    const TranslationsPage(),
+    const TranslationsPage(),
+    const SettingsPage(),
+    const TranslationsPage(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return pages[currentIndex];
   }
 }
 
@@ -242,6 +189,24 @@ class AddTranslationButton extends HookWidget {
     Key? key,
   }) : super(key: key);
 
+  void _handleTreeUpdate(
+    TranslationTreeState state,
+    AnimationController animationController,
+  ) {
+    state.whenOrNull(
+      loading: () {
+        animationController.reverse();
+      },
+      loaded: (tree) {
+        if (tree.isNotEmpty) {
+          animationController.forward();
+        } else {
+          animationController.reverse();
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final animationController = useAnimationController(
@@ -249,23 +214,19 @@ class AddTranslationButton extends HookWidget {
         milliseconds: 500,
       ),
     );
+    _handleTreeUpdate(
+      context.read<TranslationTreeCubit>().state,
+      animationController,
+    );
     final offsetTween = Tween<Offset>(
       begin: const Offset(0, 70),
       end: const Offset(0, 0),
     ).animate(animationController);
     return BlocListener<TranslationTreeCubit, TranslationTreeState>(
       listener: (context, state) {
-        state.whenOrNull(
-          loading: () {
-            animationController.reverse();
-          },
-          loaded: (tree) {
-            if (tree.isNotEmpty) {
-              animationController.forward();
-            } else {
-              animationController.reverse();
-            }
-          },
+        _handleTreeUpdate(
+          state,
+          animationController,
         );
       },
       child: AnimatedBuilder(
@@ -339,11 +300,18 @@ class _FileImportDialogState extends State<FileImportDialog> {
     try {
       List<String> errors = [];
       LoadingDialog.show(context);
+      final applicationId = context
+          .read<ApplicationCubit>()
+          .state
+          .valueOrNull
+          ?.currentApplicationId;
+      if (applicationId == null) return;
       for (final file in files) {
         final error = await getIt<TreeIOService>().import(
           File(
             file.path,
           ),
+          applicationId: applicationId,
         );
         if (error != null) {
           errors.add(error);
@@ -452,77 +420,6 @@ class _FileImportDialogState extends State<FileImportDialog> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class ChangesDetector extends StatefulWidget {
-  const ChangesDetector({
-    Key? key,
-  }) : super(key: key);
-
-  @override
-  State<ChangesDetector> createState() => _ChangesDetectorState();
-}
-
-class _ChangesDetectorState extends State<ChangesDetector> {
-  bool isSaving = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<ChangesDetectorCubit, ChangesDetectorState>(
-      builder: (context, state) {
-        if (state.hasChanges) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "You have unsaved changes.",
-                  style: TextStyle(
-                    fontSize: 14,
-                  ),
-                ),
-                Row(
-                  children: [
-                    CupertinoButton(
-                      child: const Text(
-                        "Save now",
-                        style: TextStyle(
-                          fontSize: 14,
-                        ),
-                      ),
-                      onPressed: () async {
-                        if (isSaving) return;
-                        try {
-                          setState(() {
-                            isSaving = true;
-                          });
-                          await context.read<ChangesDetectorCubit>().save();
-                        } catch (e) {
-                          print(e);
-                        } finally {
-                          setState(() {
-                            isSaving = false;
-                          });
-                        }
-                      },
-                    ),
-                    if (isSaving) ...[
-                      const Gap(5),
-                      const CupertinoActivityIndicator(),
-                    ],
-                  ],
-                )
-              ],
-            ),
-          );
-        }
-        return const SizedBox();
-      },
     );
   }
 }
