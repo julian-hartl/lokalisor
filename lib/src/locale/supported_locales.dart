@@ -33,7 +33,7 @@ const _french = TranslationLocale(
 );
 
 /// List of all supported locales and their flags.
-const List<TranslationLocale> supportedLocales = [
+const List<TranslationLocale> availableLocales = [
   _german,
   _us,
   _uk,

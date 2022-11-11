@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_lokalisor/src/application/application_cubit.dart';
 import 'package:flutter_lokalisor/src/notifications/error_notification.dart';
 import 'package:flutter_lokalisor/src/notifications/success_notification.dart';
 import 'package:flutter_lokalisor/src/translation_locale.dart';
@@ -22,6 +23,12 @@ class TranslationValueDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locales = context
+        .read<ApplicationCubit>()
+        .state
+        .valueOrThrow
+        .currentApplication!
+        .supportedLocales;
     return BlocProvider(
       create: (context) => TranslationValueDialogCubit(node),
       child: Builder(builder: (context) {
@@ -70,27 +77,31 @@ class TranslationValueDialog extends StatelessWidget {
                                   ),
                                 ),
                                 child: ListView.builder(
-                                  itemBuilder: (context, index) =>
-                                      LocaleListTile(
-                                          locale: supportedLocales[index],
-                                          onChanged: (String value) {
-                                            context
-                                                .read<
-                                                    TranslationValueDialogCubit>()
-                                                .markLocaleAsChanged(
-                                                  supportedLocales[index].id,
-                                                  value,
-                                                );
-                                          },
-                                          node: node,
-                                          value: model.translationValues
-                                                  .firstWhereOrNull((element) =>
-                                                      element.localeId ==
-                                                      supportedLocales[index]
-                                                          .id)
-                                                  ?.value ??
-                                              ""),
-                                  itemCount: supportedLocales.length,
+                                  itemBuilder: (context, index) {
+                                    final localeId = locales[index];
+
+                                    return LocaleListTile(
+                                        locale: availableLocales.firstWhere(
+                                          (element) => element.id == localeId,
+                                        ),
+                                        onChanged: (String value) {
+                                          context
+                                              .read<
+                                                  TranslationValueDialogCubit>()
+                                              .markLocaleAsChanged(
+                                                localeId,
+                                                value,
+                                              );
+                                        },
+                                        node: node,
+                                        value: model.translationValues
+                                                .firstWhereOrNull((element) =>
+                                                    element.localeId ==
+                                                    localeId)
+                                                ?.value ??
+                                            "");
+                                  },
+                                  itemCount: locales.length,
                                 ),
                               ),
                             ),

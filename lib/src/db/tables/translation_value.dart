@@ -22,11 +22,4 @@ class TranslationValueTable extends Table {
         translationNodeId,
       };
 
-  @override
-  List<Set<Column<Object>>>? get uniqueKeys => [
-        {
-          localeId,
-          translationNodeId,
-        },
-      ];
 }

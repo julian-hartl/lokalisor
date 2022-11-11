@@ -10,6 +10,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:universal_io/io.dart';
 
+import '../locale/supported_locales.dart';
+import 'converters/supported_locales_converter.dart';
 import 'tables/application.dart';
 import 'tables/translation_node.dart';
 import 'tables/translation_value.dart';

@@ -43,7 +43,7 @@ class LocaleRepository {
   Future<void> populateSupportedLocales() async {
     final statement = localeTable.insert();
     await _db.transaction(() async {
-      for (final locale in supportedLocales) {
+      for (final locale in availableLocales) {
         await statement.insertOnConflictUpdate(
           LocaleTableCompanion.insert(
             id: Value(locale.id),

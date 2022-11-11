@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:async_dart/async_dart.dart';
-import 'package:bloc/bloc.dart';
 import 'package:flutter_lokalisor/src/di/get_it.dart';
 
 import '../../translation_node_repository.dart';
@@ -27,10 +26,11 @@ class TranslationTreeTileCubit extends AsyncCubit<List<TranslationNode>> {
   }
 
   Future<void> load() async {
-    emit(const AsyncValue.loading());
-    final children = await _nodeRepository.getChildren(_node.id);
-    _watch();
-    emit(AsyncValue.loaded(children));
+    await run(() async {
+      final children = await _nodeRepository.getChildren(_node.id);
+      _watch();
+      return children;
+    });
   }
 
   @override

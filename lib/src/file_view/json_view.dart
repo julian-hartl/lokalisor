@@ -49,7 +49,11 @@ class _JsonViewState extends State<JsonView> with LoggerProvider {
   late TranslationLocale locale;
 
   void _updateJson() async {
-    final applicationId = context.read<ApplicationCubit>().state.valueOrNull?.currentApplicationId;
+    final applicationId = context
+        .read<ApplicationCubit>()
+        .state
+        .valueOrNull
+        ?.currentApplicationId;
     if (applicationId == null) {
       log("Cannot update json: No application selected.");
       return;
@@ -158,7 +162,18 @@ class _SelectLocaleDialogState extends State<_SelectLocaleDialog> {
   void initState() {
     super.initState();
     locale = widget.initialLocale;
+    locales = availableLocales
+        .where((element) => context
+            .read<ApplicationCubit>()
+            .state
+            .valueOrThrow
+            .currentApplication!
+            .supportedLocales
+            .contains(element.id))
+        .toList();
   }
+
+  late final List<TranslationLocale> locales;
 
   @override
   Widget build(BuildContext context) {
@@ -186,13 +201,13 @@ class _SelectLocaleDialogState extends State<_SelectLocaleDialog> {
                 itemExtent: 30,
                 onSelectedItemChanged: (value) {
                   setState(() {
-                    locale = supportedLocales[value];
+                    locale = locales[value];
                   });
                 },
                 scrollController: FixedExtentScrollController(
-                  initialItem: supportedLocales.indexOf(widget.initialLocale),
+                  initialItem: availableLocales.indexOf(widget.initialLocale),
                 ),
-                children: supportedLocales
+                children: locales
                     .map((e) => Text(
                           "${e.flag} ${e.name}",
                         ))

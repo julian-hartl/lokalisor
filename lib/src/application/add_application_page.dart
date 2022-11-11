@@ -1,14 +1,15 @@
-import 'package:collection/collection.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_lokalisor/src/application/application_cubit.dart';
+import 'package:flutter_lokalisor/src/application/widgets/logo_picker.dart';
 import 'package:flutter_lokalisor/src/notifications/error_notification.dart';
 import 'package:flutter_lokalisor/src/notifications/success_notification.dart';
 import 'package:flutter_lokalisor/src/widgets/loading_dialog.dart';
 import 'package:universal_io/io.dart';
+
+import 'widgets/path_field.dart';
 
 class AddApplicationPage extends StatelessWidget {
   const AddApplicationPage({Key? key}) : super(key: key);
@@ -51,36 +52,11 @@ class AddApplicationForm extends HookWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            CupertinoButton(
-              onPressed: () async {
-                try {
-                  LoadingDialog.show(context);
-                  final result = await FilePicker.platform.pickFiles(
-                    allowMultiple: false,
-                    type: FileType.custom,
-                    allowedExtensions: ['png', 'jpg', 'jpeg'],
-                  );
-                  if (result?.files.firstOrNull?.path != null) {
-                    logoPath.value = result!.files.first.path;
-                  }
-                } catch (e) {
-                  print(e);
-                } finally {
-                  Navigator.pop(context);
-                }
+            ApplicationLogoPicker(
+              logoPath: logoPath.value,
+              onChanged: (value) {
+                logoPath.value = value;
               },
-              child: CircleAvatar(
-                radius: 50,
-                backgroundImage: logoPath.value != null
-                    ? FileImage(File(logoPath.value!))
-                    : null,
-                child: logoPath.value == null
-                    ? const Icon(
-                        CupertinoIcons.photo,
-                        size: 50,
-                      )
-                    : null,
-              ),
             ),
             const Text('Logo'),
             const SizedBox(height: 16),
@@ -97,32 +73,10 @@ class AddApplicationForm extends HookWidget {
               placeholder: 'Description',
             ),
             const SizedBox(height: 16),
-            CupertinoTextFormFieldRow(
-              placeholder: 'Path',
-              initialValue: path.value,
-              readOnly: true,
-              onTap: () async {
-                try {
-                  LoadingDialog.show(context);
-                  final result = await FilePicker.platform.pickFiles(
-                    allowMultiple: false,
-                    type: FileType.custom,
-                    allowedExtensions: ['yaml'],
-                  );
-                  final filePath = result?.files.firstOrNull?.path;
-                  if (filePath != null) {
-                    if (filePath.endsWith('pubspec.yaml')) {
-                      path.value = filePath;
-                    } else {
-                      showErrorNotification(
-                          "Please select a pubspec.yaml file");
-                    }
-                  }
-                } catch (e) {
-                  print(e);
-                } finally {
-                  Navigator.pop(context);
-                }
+            ApplicationPathField(
+              initialPath: path.value ?? "",
+              onChanged: (value) {
+                path.value = value;
               },
             ),
             const SizedBox(height: 16),

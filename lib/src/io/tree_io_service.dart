@@ -1,31 +1,49 @@
 import 'dart:convert';
 
 import 'package:collection/collection.dart';
+import 'package:flutter_lokalisor/src/application/application_repository.dart';
 import 'package:flutter_lokalisor/src/logger/logger.dart';
 import 'package:flutter_lokalisor/src/translation_locale.dart';
 import 'package:flutter_lokalisor/src/translation_tree/translation_node.dart';
 import 'package:flutter_lokalisor/src/translation_value/translation_value_repository.dart';
+import 'package:fpdart/fpdart.dart';
 import 'package:injectable/injectable.dart';
 import 'package:universal_io/io.dart';
 
 import '../db/drift.dart';
-import '../locale/locale_repository.dart';
-import '../locale/supported_locales.dart';
 import '../translation_node_repository.dart';
 
 @lazySingleton
 class TreeIOService with LoggerProvider {
   final TranslationNodeRepository _nodeRepository;
   final TranslationValueRepository _valueRepository;
-  final LocaleRepository _localeRepository;
+  final ApplicationRepository _applicationRepository;
   final DriftDb _db;
 
   TreeIOService(
     this._nodeRepository,
-    this._localeRepository,
+    this._applicationRepository,
     this._valueRepository,
     this._db,
   );
+
+  TaskEither<String, Unit> export(int applicationId) {
+    return TaskEither(() async {
+      try {
+        final application =
+            await _applicationRepository.getApplication(applicationId);
+        for (final locale in application!.locales) {
+          await outputTreeAsJson(
+            locale: locale,
+            applicationId: applicationId,
+          );
+        }
+        return right(unit);
+      } catch (e) {
+        return left("Failed to export translations: $e");
+      }
+    });
+  }
 
   /// Returns the translation file.
   Future<File> _getTranslationsFile(String locale) async {
@@ -128,13 +146,16 @@ class TreeIOService with LoggerProvider {
   Future<String?> import(File file, {required int applicationId}) async {
     try {
       log("Importing file ${file.path}");
+      final application = await _applicationRepository.getApplication(
+        applicationId,
+      );
       final json = jsonDecode(await file.readAsString());
       final fileName = file.uri.pathSegments.last.split(".").first;
-      final locale = supportedLocales
+      final locale = application!.locales
           .firstWhereOrNull((element) => element.code == fileName);
 
       if (locale == null) {
-        return "Locale $fileName is not supported";
+        return "Locale $fileName is not supported by this application.";
       }
       await _db.transaction(() async {
         await _parseJson(json, null, locale, applicationId);

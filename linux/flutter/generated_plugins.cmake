@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   desktop_drop
+  native_context_menu
   sqlite3_flutter_libs
 )
 

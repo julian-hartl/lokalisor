@@ -59,6 +59,7 @@ dependencies:
     path:
       ../dart/async_dart
   fpdart: ^0.3.0
+  native_context_menu: ^0.2.2+5
 dev_dependencies:
   flutter_test:
     sdk: flutter

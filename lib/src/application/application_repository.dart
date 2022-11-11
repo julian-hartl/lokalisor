@@ -10,6 +10,7 @@ extension _ApplicationMapper on ApplicationTableData {
         description: description,
         logoPath: logoPath,
         path: path,
+        supportedLocales: supportedLocales,
       );
 }
 
@@ -63,6 +64,7 @@ class ApplicationRepository {
       path: application.path,
       description: application.description,
       logoPath: application.logoPath,
+      supportedLocales: application.supportedLocales,
     );
     await _db.update(applicationTable).replace(app);
   }
@@ -72,5 +74,15 @@ class ApplicationRepository {
     final query = _db.delete(applicationTable)
       ..where((tbl) => tbl.id.equals(id));
     await query.go();
+  }
+
+  Stream<List<Application>> watchApplications() {
+    return _db.select(applicationTable).watch().map(
+          (apps) => apps
+              .map(
+                (app) => app.toApplication(),
+              )
+              .toList(),
+        );
   }
 }
