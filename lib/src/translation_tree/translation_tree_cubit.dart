@@ -1,6 +1,6 @@
+import 'dart:async';
+
 import 'package:bloc/bloc.dart';
-import 'package:flutter_lokalisor/src/application/application_repository.dart';
-import 'package:flutter_lokalisor/src/core/async_value.dart';
 import 'package:flutter_lokalisor/src/notifications/error_notification.dart';
 import 'package:flutter_lokalisor/src/translation_node_repository.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
@@ -17,13 +17,12 @@ part 'translation_tree_state.dart';
 class TranslationTreeCubit extends Cubit<TranslationTreeState> {
   TranslationTreeCubit(
     this._nodeRepository,
-    this._applicationRepository,
   ) : super(
           const TranslationTreeState.loading(),
         );
 
   final TranslationNodeRepository _nodeRepository;
-  final ApplicationRepository _applicationRepository;
+  StreamSubscription? _nodesSub;
 
   int? _latestApplicationId;
 
@@ -53,17 +52,17 @@ class TranslationTreeCubit extends Cubit<TranslationTreeState> {
       )!;
       emit(const TranslationTreeState.loading());
 
-      await _nodeRepository.deleteNode(nodeId);
+      final hasDeleted = await _nodeRepository.deleteNode(nodeId);
+      if (!hasDeleted) {
+        _reportError(
+          "Deleted row does not exist.",
+          Exception("No rows affected"),
+        );
+        return;
+      }
 
       showSuccessNotification(
         "Successfully removed translation entry.",
-      );
-      emit(
-        TranslationTreeState.loaded(
-          nodes: [...nodes]..removeWhere(
-              (element) => element.id == nodeId,
-            ),
-        ),
       );
     } catch (e, str) {
       _reportError("Could not remove node.", e, str);
@@ -73,14 +72,20 @@ class TranslationTreeCubit extends Cubit<TranslationTreeState> {
   Future<void> load(int applicationId) async {
     try {
       emit(const TranslationTreeState.loading());
-      final result =
-          await _nodeRepository.getNodes(applicationId: applicationId);
       _latestApplicationId = applicationId;
-      emit(
-        TranslationTreeState.loaded(
-          nodes: result,
-        ),
-      );
+      await _nodesSub?.cancel();
+      _nodesSub = _nodeRepository
+          .watchNodes(
+            applicationId: applicationId,
+            parentId: (await _nodeRepository.getRootId(applicationId))!,
+          )
+          .listen(
+            (event) => emit(
+              TranslationTreeState.loaded(
+                nodes: event,
+              ),
+            ),
+          );
     } catch (e, str) {
       _reportError("Could not load translations.", e, str);
     }
@@ -98,7 +103,9 @@ class TranslationTreeCubit extends Cubit<TranslationTreeState> {
   Future<List<TranslationNode>> getChildren(int parentId) async {
     try {
       _checkState();
-      final children = await _nodeRepository.getNodes(parent: parentId);
+      final children = await _nodeRepository.getNodes(
+        parent: parentId,
+      );
       return children;
     } catch (e, str) {
       _reportError("Could not get children translations.", e, str);
@@ -148,21 +155,6 @@ class TranslationTreeCubit extends Cubit<TranslationTreeState> {
         _latestApplicationId!,
       ))!;
 
-      // Update locale state
-      state.whenOrNull(
-        loaded: (nodes) {
-          if (parentId == null) {
-            emit(
-              TranslationTreeState.loaded(
-                nodes: [...nodes, newNode],
-              ),
-            );
-          } else {
-            // dont do anything here because the children will automatically be fetched
-
-          }
-        },
-      );
       showSuccessNotification(
         "Successfully added new translation entry.",
       );
@@ -171,5 +163,11 @@ class TranslationTreeCubit extends Cubit<TranslationTreeState> {
       _reportError("Could not add new translation entry.", e, str);
     }
     return null;
+  }
+
+  @override
+  Future<void> close() async {
+    await _nodesSub?.cancel();
+    return super.close();
   }
 }

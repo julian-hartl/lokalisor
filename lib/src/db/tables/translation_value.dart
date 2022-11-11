@@ -2,8 +2,6 @@ import 'package:drift/drift.dart';
 import 'package:flutter_lokalisor/src/db/tables/locale.dart';
 
 class TranslationValueTable extends Table {
-  IntColumn get id => integer().autoIncrement()();
-
   IntColumn get localeId => integer().references(
         LocaleTable,
         #id,
@@ -19,7 +17,16 @@ class TranslationValueTable extends Table {
   TextColumn get value => text()();
 
   @override
+  Set<Column<Object>>? get primaryKey => {
+        localeId,
+        translationNodeId,
+      };
+
+  @override
   List<Set<Column<Object>>>? get uniqueKeys => [
-        {localeId, translationNodeId},
+        {
+          localeId,
+          translationNodeId,
+        },
       ];
 }

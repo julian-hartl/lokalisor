@@ -7,7 +7,6 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_lokalisor/src/application/add_application_page.dart';
 import 'package:flutter_lokalisor/src/application/application_cubit.dart';
 import 'package:flutter_lokalisor/src/changes_detector/changes_detector_cubit.dart';
-import 'package:flutter_lokalisor/src/db/drift.dart';
 import 'package:flutter_lokalisor/src/di/get_it.dart';
 import 'package:flutter_lokalisor/src/file_view/json_view.dart';
 import 'package:flutter_lokalisor/src/io/tree_io_service.dart';
@@ -23,12 +22,10 @@ import 'package:universal_io/io.dart';
 
 import 'src/locale/supported_locales.dart';
 import 'src/translation_value/translation_value_cubit.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await configureDependencies();
-  // await getIt<Isar>().writeTxn(() async {
-  //   await getIt<Isar>().clear();
-  // });
   runApp(const FlutterLokalisor());
 }
 
@@ -76,11 +73,11 @@ class FlutterLokalisor extends StatelessWidget {
           home: BlocConsumer<ApplicationCubit, ApplicationState>(
             listener: (context, state) {
               state.whenOrNull(
-                loaded: (applications, currentApplicationId) {
-                  if (currentApplicationId != null) {
+                loaded: (value) {
+                  if (value.currentApplicationId != null) {
                     context
                         .read<TranslationTreeCubit>()
-                        .load(currentApplicationId);
+                        .load(value.currentApplicationId!);
                   }
                 },
               );
@@ -92,7 +89,7 @@ class FlutterLokalisor extends StatelessWidget {
                     child: CupertinoActivityIndicator(),
                   ),
                 ),
-                loaded: (applications, currentApplicationId) => const Home(),
+                loaded: (_) => const Home(),
                 error: (message) => CupertinoPageScaffold(
                   child: Center(
                     child: Text('Error: $message'),
@@ -210,7 +207,7 @@ class _HomeState extends State<Home> {
                               ? CrossAxisAlignment.center
                               : CrossAxisAlignment.start,
                           children: state.whenOrNull(
-                                loaded: (applications, _) => applications
+                                loaded: (value) => value.applications
                                     .map(
                                       (e) => CupertinoButton(
                                         onPressed: () {
@@ -283,7 +280,7 @@ class _HomeState extends State<Home> {
               builder: (context, state) {
             return state.maybeWhen(
               orElse: () => SizedBox(),
-              loaded: (applications, currentApplicationId) {
+              loaded: (value) {
                 return CupertinoPageScaffold(
                   navigationBar: CupertinoNavigationBar(
                     // leading: CupertinoButton(
@@ -292,7 +289,7 @@ class _HomeState extends State<Home> {
                     //   onPressed: () {},
                     // ),
                     middle: const Text('Flutter Lokalisor'),
-                    trailing: currentApplicationId != null
+                    trailing: value.currentApplicationId != null
                         ? Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -313,7 +310,7 @@ class _HomeState extends State<Home> {
                           )
                         : null,
                   ),
-                  child: applications.isEmpty
+                  child: value.applications.isEmpty
                       ? Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -381,12 +378,19 @@ class _HomeState extends State<Home> {
                                         CupertinoDialogAction(
                                           onPressed: () async {
                                             try {
+                                              final currentApplicationId = context
+                                                  .read<ApplicationCubit>()
+                                                  .state
+                                                  .valueOrNull
+                                                  ?.currentApplicationId as int;
                                               LoadingDialog.show(context);
                                               for (final locale
                                                   in supportedLocales) {
                                                 await getIt<TreeIOService>()
                                                     .outputTreeAsJson(
                                                   locale: locale,
+                                                  applicationId:
+                                                      currentApplicationId,
                                                 );
                                               }
                                               showSuccessNotification(
@@ -580,10 +584,11 @@ class _FileImportDialogState extends State<FileImportDialog> {
     try {
       List<String> errors = [];
       LoadingDialog.show(context);
-      final applicationId = context.read<ApplicationCubit>().state.whenOrNull(
-            loaded: (applications, currentApplicationId) =>
-                currentApplicationId,
-          );
+      final applicationId = context
+          .read<ApplicationCubit>()
+          .state
+          .valueOrNull
+          ?.currentApplicationId;
       if (applicationId == null) return;
       for (final file in files) {
         final error = await getIt<TreeIOService>().import(

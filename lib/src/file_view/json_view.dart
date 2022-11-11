@@ -3,8 +3,11 @@ import 'dart:convert';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/a11y-light.dart';
+import 'package:flutter_lokalisor/src/application/application_cubit.dart';
+import 'package:flutter_lokalisor/src/logger/logger.dart';
 import 'package:flutter_lokalisor/src/notifications/error_notification.dart';
 import 'package:flutter_lokalisor/src/notifications/success_notification.dart';
 import 'package:flutter_lokalisor/src/translation_locale.dart';
@@ -26,7 +29,7 @@ class JsonView extends StatefulWidget {
   State<JsonView> createState() => _JsonViewState();
 }
 
-class _JsonViewState extends State<JsonView> {
+class _JsonViewState extends State<JsonView> with LoggerProvider {
   Map<String, dynamic> json = {};
 
   void _copyToClipboard() async {
@@ -46,7 +49,15 @@ class _JsonViewState extends State<JsonView> {
   late TranslationLocale locale;
 
   void _updateJson() async {
-    final value = await getIt<TreeIOService>().getTreeAsJson(locale.id);
+    final applicationId = context.read<ApplicationCubit>().state.valueOrNull?.currentApplicationId;
+    if (applicationId == null) {
+      log("Cannot update json: No application selected.");
+      return;
+    }
+    final value = await getIt<TreeIOService>().getTreeAsJson(
+      localeId: locale.id,
+      applicationId: applicationId,
+    );
     setState(() => json = value);
   }
 

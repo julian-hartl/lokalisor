@@ -2,16 +2,17 @@ import 'package:collection/collection.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_lokalisor/src/notifications/error_notification.dart';
+import 'package:flutter_lokalisor/src/notifications/success_notification.dart';
 import 'package:flutter_lokalisor/src/translation_locale.dart';
 import 'package:flutter_lokalisor/src/translation_tree/translation_node.dart';
 import 'package:flutter_lokalisor/src/translation_value/translation_value_dialog_cubit.dart';
-import 'package:flutter_lokalisor/src/widgets/loading_dialog.dart';
 import 'package:gap/gap.dart';
 
 import '../locale/supported_locales.dart';
 import 'translation_value_cubit.dart';
 
-class TranslationValueDialog extends StatefulWidget {
+class TranslationValueDialog extends StatelessWidget {
   const TranslationValueDialog({
     Key? key,
     required this.node,
@@ -20,16 +21,9 @@ class TranslationValueDialog extends StatefulWidget {
   final TranslationNode node;
 
   @override
-  State<TranslationValueDialog> createState() => _TranslationValueDialogState();
-}
-
-class _TranslationValueDialogState extends State<TranslationValueDialog> {
-  final Map<int, String> localesToUpdate = {};
-
-  @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (context) => TranslationValueDialogCubit(widget.node),
+      create: (context) => TranslationValueDialogCubit(node),
       child: Builder(builder: (context) {
         return BlocBuilder<TranslationValueDialogCubit,
             TranslationValueDialogState>(
@@ -43,90 +37,103 @@ class _TranslationValueDialogState extends State<TranslationValueDialog> {
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   child: state.when(
-                    loading: () => const Center(
-                      child: CircularProgressIndicator(),
-                    ),
-                    loaded: (absoluteTranslationKey, translationValues) {
-                      return Column(
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.language),
-                              const SizedBox(
-                                width: 10,
-                              ),
-                              const Text("Localization Values"),
-                              Text(
-                                " ($absoluteTranslationKey)",
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
+                      loading: () => const Center(
+                            child: CircularProgressIndicator(),
                           ),
-                          const SizedBox(
-                            height: 10,
-                          ),
-                          Expanded(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: Colors.grey,
+                      loaded: (model) {
+                        return Column(
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.language),
+                                const SizedBox(
+                                  width: 10,
                                 ),
-                              ),
-                              child: ListView.builder(
-                                itemBuilder: (context, index) => LocaleListTile(
-                                    locale: supportedLocales[index],
-                                    onChanged: (String value) {
-                                      localesToUpdate[
-                                          supportedLocales[index].id] = value;
-                                      print(supportedLocales[index].id);
-                                    },
-                                    node: widget.node,
-                                    value: translationValues
-                                            .firstWhereOrNull((element) =>
-                                                element.localeId ==
-                                                supportedLocales[index].id)
-                                            ?.value ??
-                                        ""),
-                                itemCount: supportedLocales.length,
+                                const Text("Localization Values"),
+                                Text(
+                                  " (${model.absoluteTranslationKey})",
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(
+                              height: 10,
+                            ),
+                            Expanded(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                                child: ListView.builder(
+                                  itemBuilder: (context, index) =>
+                                      LocaleListTile(
+                                          locale: supportedLocales[index],
+                                          onChanged: (String value) {
+                                            context
+                                                .read<
+                                                    TranslationValueDialogCubit>()
+                                                .markLocaleAsChanged(
+                                                  supportedLocales[index].id,
+                                                  value,
+                                                );
+                                          },
+                                          node: node,
+                                          value: model.translationValues
+                                                  .firstWhereOrNull((element) =>
+                                                      element.localeId ==
+                                                      supportedLocales[index]
+                                                          .id)
+                                                  ?.value ??
+                                              ""),
+                                  itemCount: supportedLocales.length,
+                                ),
                               ),
                             ),
-                          ),
-                          const Gap(10),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              CupertinoButton(
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                },
-                                child: const Text('Cancel'),
-                              ),
-                              CupertinoButton(
-                                onPressed: () async {
-                                  LoadingDialog.show(context);
-                                  for (final entry in localesToUpdate.entries) {
-                                    await context
-                                        .read<TranslationValueCubit>()
-                                        .updateTranslation(
-                                          widget.node,
-                                          value: entry.value,
-                                          localeId: entry.key,
-                                        );
-                                  }
-                                  Navigator.pop(context);
-                                  Navigator.pop(context);
-                                },
-                                child: const Text('Save'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      );
-                    },
-                  ),
+                            const Gap(10),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                CupertinoButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                  },
+                                  child: const Text('Cancel'),
+                                ),
+                                CupertinoButton(
+                                  onPressed: () async {
+                                    final result = await context
+                                        .read<TranslationValueDialogCubit>()
+                                        .save()
+                                        .run();
+                                    result.fold((error) {
+                                      showErrorNotification(
+                                        error,
+                                      );
+                                    }, (updatedTranslations) {
+                                      if (updatedTranslations > 0) {
+                                        showSuccessNotification(
+                                            "Successfully updated translations...");
+                                      }
+                                      Navigator.pop(context);
+                                    });
+                                  },
+                                  child: const Text('Save'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        );
+                      },
+                      error: (String message) {
+                        return Center(
+                          child: Text(message),
+                        );
+                      }),
                 ),
               ),
             );

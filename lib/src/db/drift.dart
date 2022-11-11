@@ -33,10 +33,13 @@ class DriftDb extends _$DriftDb {
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
-          await m.createAll(); // create all tables
+          await m.createAll();
+        },
+        onUpgrade: (m, from, to) async {
+
         },
         beforeOpen: (m) async {
-          await executor.runCustom("PRAGMA foreign_keys = ON");
+          await customStatement('PRAGMA foreign_keys = ON');
           await populateSupportedLocales();
         },
       );
@@ -47,6 +50,7 @@ LazyDatabase _openConnection() {
     final docDir = await getApplicationDocumentsDirectory();
     final dbFolder = docDir.path;
     final file = File(p.join(dbFolder, 'db.sqlite'));
+    print(dbFolder);
     return NativeDatabase(
       file,
       logStatements: kDebugMode,

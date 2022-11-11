@@ -1,15 +1,15 @@
 import 'dart:async';
 
+import 'package:async_dart/async_dart.dart';
 import 'package:bloc/bloc.dart';
 import 'package:flutter_lokalisor/src/di/get_it.dart';
 
-import '../../core/async_value.dart';
 import '../../translation_node_repository.dart';
 import '../translation_node.dart';
 
-typedef TranslationTreeTileState = AsyncValue<List<TranslationNode>>;
+typedef TranslationTreeTileState = AsyncState<List<TranslationNode>>;
 
-class TranslationTreeTileCubit extends Cubit<TranslationTreeTileState> {
+class TranslationTreeTileCubit extends AsyncCubit<List<TranslationNode>> {
   final TranslationNode _node;
   final TranslationNodeRepository _nodeRepository =
       getIt<TranslationNodeRepository>();

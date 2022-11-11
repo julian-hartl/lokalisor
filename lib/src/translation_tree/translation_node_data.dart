@@ -7,7 +7,6 @@ class TranslationValue with _$TranslationValue {
   const factory TranslationValue({
     required final int localeId,
     required final String value,
-    required final int id,
     required final int translationNodeId,
   }) = _TranslationValue;
 

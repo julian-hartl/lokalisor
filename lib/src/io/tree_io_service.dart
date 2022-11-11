@@ -60,25 +60,36 @@ class TreeIOService with LoggerProvider {
     return value;
   }
 
-  Future<Map<String, dynamic>> getTreeAsJson(int localeId) async {
-    final nodes = await _nodeRepository.getAllNodes();
-    final locale = (await _localeRepository.getLocale(localeId))!;
+  /// Returns all translations for the given [locale] and [applicationId] in a json format.
+  Future<Map<String, dynamic>> getTreeAsJson({
+    required int applicationId,
+    required int localeId,
+  }) async {
+    final nodes = await _nodeRepository.getNodes(
+      applicationId: applicationId,
+      parent: (await _nodeRepository.getRootId(applicationId))!,
+    );
     final Map<String, dynamic> json = {};
-    for (final node in nodes.where((element) => element.parent == null)) {
+    for (final node in nodes) {
       json[node.translationKey] = await _nodeToJson(
         node,
-        localeId: locale.id,
+        localeId: localeId,
       );
     }
     return json;
   }
 
+  /// Outputs the current translation json tree to a local file.
   Future<void> outputTreeAsJson({
     required TranslationLocale locale,
+    required int applicationId,
   }) async {
     final localeCode = locale.code;
     final file = await _getTranslationsFile(localeCode);
-    final json = await getTreeAsJson(locale.id);
+    final json = await getTreeAsJson(
+      localeId: locale.id,
+      applicationId: applicationId,
+    );
     await file.writeAsString(jsonEncode(json));
     print("Wrote output to ${file.path}");
   }
@@ -112,6 +123,8 @@ class TreeIOService with LoggerProvider {
     }
   }
 
+  /// Parses the given [file] as json and inserts it into the database.
+  /// Returns a [String] containing the message in case of an error.
   Future<String?> import(File file, {required int applicationId}) async {
     try {
       log("Importing file ${file.path}");

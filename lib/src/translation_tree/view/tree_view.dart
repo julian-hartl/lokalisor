@@ -61,6 +61,9 @@ class TranslationTreeView extends StatelessWidget {
                         height: 80,
                       )
                     : TranslationTreeTile(
+                        key: Key(
+                          nodes[index].id.toString(),
+                        ),
                         node: nodes[index],
                       ),
               ),
@@ -136,117 +139,109 @@ class _TranslationTreeTileState extends State<TranslationTreeTile> {
                               },
                             )
                           : null,
-                      leading: Text(
-                        node.id.toString(),
-                        style: const TextStyle(
-                          color: Colors.grey,
-                        ),
-                      ),
                       title: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          FractionallySizedBox(
-                            widthFactor: 0.5,
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: CupertinoTextField(
-                                    controller: keyController,
-                                    placeholder: 'Key',
-                                    onEditingComplete: () {
-                                      context
-                                          .read<ChangesDetectorCubit>()
-                                          .save();
-                                    },
-                                    onChanged: (value) {
-                                      if (value == node.translationKey) {
-                                        context
-                                            .read<ChangesDetectorCubit>()
-                                            .removeChanges(id);
-                                      } else {
-                                        context
-                                            .read<ChangesDetectorCubit>()
-                                            .reportChange(id, () async {
-                                          node = node.copyWith(
-                                            translationKey: keyController.text,
-                                          );
-                                          final success = await context
-                                              .read<TranslationTreeCubit>()
-                                              .updateNode(node);
-                                          if (!success) {
-                                            keyController.text =
-                                                widget.node.translationKey;
-                                          }
-                                        });
-                                      }
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(
-                                  width: 10,
-                                ),
-                                if (children.isEmpty)
-                                  Expanded(
-                                    child: CupertinoTextField(
-                                      onTap: () {
-                                        showCupertinoDialog(
-                                          context: context,
-                                          builder: (context) =>
-                                              TranslationValueDialog(
-                                            node: node,
-                                          ),
-                                        );
-                                      },
-                                      readOnly: true,
-                                      placeholder: 'Value',
-                                    ),
-                                  ),
-                                IconButton(
-                                  onPressed: () async {
-                                    await context
+                          Row(
+                            children: [
+                              Expanded(
+                                child: CupertinoTextField(
+                                  controller: keyController,
+                                  placeholder: 'Key',
+                                  onEditingComplete: () {
+                                    context
                                         .read<ChangesDetectorCubit>()
                                         .save();
-                                    if (keyController.text.isEmpty) {
-                                      showErrorNotification(
-                                          "Parent key can't be empty.");
-                                      return;
-                                    }
-                                    // add node
-                                    final newNode = await context
-                                        .read<TranslationTreeCubit>()
-                                        .addNode(
-                                          node.id,
-                                          '',
+                                  },
+                                  onChanged: (value) {
+                                    if (value == node.translationKey) {
+                                      context
+                                          .read<ChangesDetectorCubit>()
+                                          .removeChanges(id);
+                                    } else {
+                                      context
+                                          .read<ChangesDetectorCubit>()
+                                          .reportChange(id, () async {
+                                        node = node.copyWith(
+                                          translationKey: keyController.text,
                                         );
-                                    if (newNode != null) {
-                                      // update node
-                                      node = await context
-                                          .read<TranslationTreeCubit>()
-                                          .getNodeOrThrow(node.id);
-                                      setState(() {
-                                        open = true;
+                                        final success = await context
+                                            .read<TranslationTreeCubit>()
+                                            .updateNode(node);
+                                        if (!success) {
+                                          keyController.text =
+                                              widget.node.translationKey;
+                                        }
                                       });
                                     }
                                   },
-                                  icon: const Icon(
-                                    Icons.add,
+                                ),
+                              ),
+                              const SizedBox(
+                                width: 10,
+                              ),
+                              if (children.isEmpty)
+                                Expanded(
+                                  child: CupertinoTextField(
+                                    onTap: () {
+                                      showCupertinoDialog(
+                                        barrierDismissible: true,
+                                        context: context,
+                                        builder: (context) =>
+                                            TranslationValueDialog(
+                                          node: node,
+                                        ),
+                                      );
+                                    },
+                                    readOnly: true,
+                                    placeholder: 'Value',
                                   ),
                                 ),
-                                CupertinoButton(
-                                  onPressed: () async {
-                                    // remove node
-                                    await context
+                              IconButton(
+                                onPressed: () async {
+                                  await context
+                                      .read<ChangesDetectorCubit>()
+                                      .save();
+                                  if (keyController.text.isEmpty) {
+                                    showErrorNotification(
+                                        "Parent key can't be empty.");
+                                    return;
+                                  }
+                                  // add node
+                                  final newNode = await context
+                                      .read<TranslationTreeCubit>()
+                                      .addNode(
+                                        node.id,
+                                        '',
+                                      );
+                                  if (newNode != null) {
+                                    // update node
+                                    node = await context
                                         .read<TranslationTreeCubit>()
-                                        .removeNode(
-                                          node.id,
-                                        );
-                                  },
-                                  child: const Icon(
-                                    Icons.remove,
-                                  ),
-                                )
-                              ],
-                            ),
+                                        .getNodeOrThrow(node.id);
+                                    setState(() {
+                                      open = true;
+                                    });
+                                  }
+                                },
+                                icon: const Icon(
+                                  Icons.add,
+                                ),
+                              ),
+                              CupertinoButton(
+                                onPressed: () async {
+                                  // remove node
+                                  await context
+                                      .read<TranslationTreeCubit>()
+                                      .removeNode(
+                                        node.id,
+                                      );
+                                },
+                                child: const Icon(
+                                  Icons.remove,
+                                ),
+                              )
+                            ],
                           ),
                           AnimatedSize(
                             duration: const Duration(milliseconds: 150),

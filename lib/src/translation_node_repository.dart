@@ -39,17 +39,36 @@ class TranslationNodeRepository with LoggerProvider {
   }
 
   Future<List<TranslationNode>> getChildren(int parentId) async {
-    return await getNodes(parent: parentId);
+    return await getNodes(
+      parent: parentId,
+    );
+  }
+
+  Stream<List<TranslationNode>> watchNodes({
+    int? applicationId,
+    int? parentId,
+  }) {
+    final query = translationNodeTable.select();
+    if (applicationId != null) {
+      query.where((tbl) => tbl.applicationId.equals(applicationId));
+    }
+    if (parentId != null) {
+      query.where((tbl) => tbl.parent.equals(parentId));
+    }
+    query.orderBy([
+      (tbl) => OrderingTerm(
+            expression: tbl.translationKey,
+          ),
+    ]);
+    return query.watch().map((rows) {
+      return rows.map((row) => row.toTranslationNode()).toList();
+    });
   }
 
   Stream<List<TranslationNode>> watchChildren(int parentId) {
-    final query = translationNodeTable.select()
-      ..where((tbl) => tbl.parent.equals(parentId));
-    return query.watch().map((nodes) => nodes
-        .map(
-          (node) => node.toTranslationNode(),
-        )
-        .toList());
+    return watchNodes(
+      parentId: parentId,
+    );
   }
 
   Future<List<TranslationNode>> getNodes({
@@ -70,7 +89,7 @@ class TranslationNodeRepository with LoggerProvider {
     }
     if (parent != null) {
       nodeQuery.where(
-        (tbl) => tbl.parent.equals(parent),
+        (tbl) => tbl.parent.equalsNullable(parent),
       );
     }
 
@@ -111,11 +130,24 @@ class TranslationNodeRepository with LoggerProvider {
     return updatedNode.toTranslationNode();
   }
 
+  Future<int?> getRootId(int applicationId) async {
+    final query = _db.select(translationNodeTable)
+      ..where(
+        (tbl) => tbl.applicationId.equals(applicationId),
+      )
+      ..where(
+        (tbl) => tbl.parent.isNull(),
+      );
+    final result = await query.getSingleOrNull();
+    return result?.id;
+  }
+
   Future<TranslationNode?> addNode(
     int? parentId,
     String? translationKey,
     int applicationId,
   ) async {
+    parentId ??= await getRootId(applicationId);
     // Update db
     final nodeToInsert = TranslationNodeTableCompanion.insert(
       applicationId: applicationId,
@@ -124,18 +156,30 @@ class TranslationNodeRepository with LoggerProvider {
     );
     final nodeUpdateQuery = translationNodeTable.insert();
 
-    final node = await nodeUpdateQuery.insertReturning(nodeToInsert);
+    final node = await nodeUpdateQuery.insertReturning(
+      nodeToInsert,
+      onConflict: DoUpdate(
+        (old) => nodeToInsert,
+        target: [
+          translationNodeTable.applicationId,
+          translationNodeTable.translationKey,
+          translationNodeTable.parent,
+        ],
+      ),
+    );
     final translationNode = node.toTranslationNode();
     log("Added node $translationNode");
     return translationNode;
   }
 
-  Future<void> deleteNode(int nodeId) async {
+  Future<bool> deleteNode(int nodeId) async {
     log("Deleting node $nodeId...");
-    await _db.transaction(() async {
-      final amount = await translationNodeTable
-          .deleteWhere((tbl) => tbl.id.equals(nodeId));
-      log("Successfully deleted $amount nodes");
-    });
+    final hasDeleted = await translationNodeTable.deleteOne(
+      TranslationNodeTableCompanion(
+        id: Value(nodeId),
+      ),
+    );
+    log("Successfully deleted node $nodeId");
+    return hasDeleted;
   }
 }

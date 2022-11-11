@@ -1,10 +1,10 @@
 part of 'translation_value_dialog_cubit.dart';
 
 @freezed
-class TranslationValueDialogState with _$TranslationValueDialogState {
-  const factory TranslationValueDialogState.loading() = _loading;
-  const factory TranslationValueDialogState.loaded({
+class TranslationValueDialogModel with _$TranslationValueDialogModel {
+  const factory TranslationValueDialogModel({
    required String absoluteTranslationKey,
     required List<TranslationValue> translationValues,
-}) = _Loaded;
+}) = _TranslationValueDialogModel;
 }
+

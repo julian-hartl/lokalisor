@@ -9,7 +9,6 @@ extension on TranslationValueTableData {
     return TranslationValue(
       value: value,
       localeId: localeId,
-      id: id,
       translationNodeId: translationNodeId,
     );
   }
@@ -61,19 +60,19 @@ class TranslationValueRepository with LoggerProvider {
     required int translationNodeId,
     required int localeId,
     required String value,
-    int? translationId,
   }) async {
     final query = translationValueTable.insert();
     final insertable = TranslationValueTableCompanion.insert(
       localeId: localeId,
       translationNodeId: translationNodeId,
       value: value,
-      id: Value.ofNullable(translationId),
     );
     final returning = await query.insertReturning(
       insertable,
       onConflict: DoUpdate(
-        (_) => insertable,
+        (_) => TranslationValueTableCompanion(
+          value: Value(value),
+        ),
       ),
     );
     final translation = returning.toTranslationValue();

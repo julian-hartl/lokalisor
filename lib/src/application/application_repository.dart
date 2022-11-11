@@ -1,5 +1,6 @@
 import 'package:flutter_lokalisor/src/application/application.dart';
 import 'package:flutter_lokalisor/src/db/drift.dart';
+import 'package:flutter_lokalisor/src/translation_node_repository.dart';
 import 'package:injectable/injectable.dart';
 
 extension _ApplicationMapper on ApplicationTableData {
@@ -15,8 +16,9 @@ extension _ApplicationMapper on ApplicationTableData {
 @lazySingleton
 class ApplicationRepository {
   final DriftDb _db;
+  final TranslationNodeRepository _translationNodeRepository;
 
-  const ApplicationRepository(this._db);
+  const ApplicationRepository(this._db, this._translationNodeRepository);
 
   $ApplicationTableTable get applicationTable => _db.applicationTable;
 
@@ -45,6 +47,11 @@ class ApplicationRepository {
   Future<Application> addApplication(
       ApplicationTableCompanion application) async {
     final id = await _db.into(applicationTable).insert(application);
+    await _translationNodeRepository.addNode(
+      null,
+      null,
+      id,
+    );
     return (await getApplication(id))!;
   }
 

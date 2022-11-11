@@ -1,8 +1,9 @@
-import 'package:bloc/bloc.dart';
+import 'package:async_dart/async_dart.dart';
 import 'package:collection/collection.dart';
 import 'package:drift/drift.dart' as drift;
 import 'package:flutter_lokalisor/src/application/application_repository.dart';
 import 'package:flutter_lokalisor/src/db/drift.dart';
+import 'package:flutter_lokalisor/src/logger/logger.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:injectable/injectable.dart';
 
@@ -12,42 +13,42 @@ part 'application_cubit.freezed.dart';
 
 part 'application_state.dart';
 
+typedef ApplicationState = AsyncValue<ApplicationStateValue>;
+
 @lazySingleton
-class ApplicationCubit extends Cubit<ApplicationState> {
-  ApplicationCubit(this._applicationRepository)
-      : super(const ApplicationState.loading()) {
+class ApplicationCubit extends AsyncCubit<ApplicationStateValue>
+    with LoggerProvider {
+  ApplicationCubit(this._applicationRepository) {
     loadApplications();
   }
 
   final ApplicationRepository _applicationRepository;
 
   Future<void> loadApplications() async {
-    try {
-      emit(const ApplicationState.loading());
-      final applications = await _applicationRepository.getApplications();
-      emit(
-        ApplicationState.loaded(
+    await run(
+      () async {
+        final applications = await _applicationRepository.getApplications();
+        return ApplicationStateValue(
           applications: applications,
           currentApplicationId: applications.firstOrNull?.id,
-        ),
-      );
-    } catch (e) {
-      print(e);
-      emit(ApplicationState.error(e.toString()));
-    }
+        );
+      },
+      errorMessageFunction: (error, stackTrace) =>
+          "Error while loading applications",
+    );
   }
 
   void setCurrentApplicationId(int? id) {
-    emit(
-      state.when(
-        loading: () => const ApplicationState.loading(),
-        loaded: (applications, _) => ApplicationState.loaded(
-          applications: applications,
-          currentApplicationId: id,
+    final value = state.valueOrNull;
+    if (value != null) {
+      emit(
+        AsyncValue.loaded(
+          value.copyWith(
+            currentApplicationId: id,
+          ),
         ),
-        error: (message) => ApplicationState.error(message),
-      ),
-    );
+      );
+    }
   }
 
   Future<String?> addApplication({
@@ -56,33 +57,38 @@ class ApplicationCubit extends Cubit<ApplicationState> {
     required String? logoPath,
     required String path,
   }) async {
-    final applications = state.whenOrNull(
-      loaded: (applications, currentApplicationId) => applications,
-    );
+    final applications = state.valueOrNull?.applications;
     Application? application;
-    try {
-      emit(const ApplicationState.loading());
-      application = await _applicationRepository.addApplication(
-        ApplicationTableCompanion.insert(
-          name: name,
-          description: drift.Value(description),
-          logoPath: drift.Value(logoPath),
-          path: path,
-        ),
-      );
-    } catch (e) {
-      return "Could not add application: $e";
-    } finally {
-      if (applications != null && application != null) {
-        emit(
-          ApplicationState.loaded(
-            applications: [...applications, application],
-            currentApplicationId: application.id,
+    String? message;
+    await run(
+      () async {
+        return await _applicationRepository.addApplication(
+          ApplicationTableCompanion.insert(
+            name: name,
+            description: drift.Value(description),
+            logoPath: drift.Value(logoPath),
+            path: path,
           ),
         );
-      } else {
-        await loadApplications();
-      }
-    }
+      },
+      after: (value) async {
+        if (applications != null && application != null) {
+          return ApplicationState.loaded(
+            ApplicationStateValue(
+              applications: applications,
+              currentApplicationId: application.id,
+            ),
+          );
+        } else {
+          await loadApplications();
+        }
+        return null;
+      },
+      errorMessageFunction: (error, stackTrace) {
+        message = "Could not add application: $error";
+        return message!;
+      },
+    );
+    return message;
   }
 }
